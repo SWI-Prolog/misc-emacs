@@ -25,18 +25,50 @@ increment_number(M) :->
 	send(M, next_line),
 	send(M, column, C0).
 
-/*
-convert_class(M) :->
-	"Convert old-stype XPCE makeClassFunction"::
-	new(Tmp, file),
-	send(M, write_region, Tmp),
-	get(Tmp, name, FileName),
-	concat(FileName, '.out', OutFile),
-	convert_class(FileName, OutFile),
-	send(M, insert_file, OutFile),
-	send(file(OutFile), remove),
-	send(Tmp, remove).
-*/
+highlight_lines(M, File:file) :->
+	"Highlight <Path>:<Line> lines matching buffer"::
+	get(M, text_buffer, TB),
+	send(TB?editors, for_all,
+	     message(@arg1, style, highlight,
+		     style(background := light_blue))),
+	send(TB, for_all_fragments,
+	     if(@arg1?style == highlight,
+		message(@arg1, destroy))),
+	get(TB, file, TBFile),
+	get(TBFile, name, Name),
+	absolute_file_name(Name, Path),
+	atom_codes(Path, Codes),
+	get(File, name, FileName),
+	setup_call_cleanup(open(FileName, read, In),
+			   highlight(M, In, Codes),
+			   close(In)).
+
+highlight(Mode, In, Path) :-
+	read_line_to_codes(In, Line),
+	(   Line == end_of_file
+	->  true
+	;   (   debug(highlight, 'Line: ~s', [Line]),
+	        append(Path, [0':|More], Pattern),
+	        append(_, Pattern, Line),
+		digits(More, Digits),
+		number_codes(LineNo, Digits),
+		highlight_line(Mode, LineNo)
+	    ->  true
+	    ;   true
+	    ),
+	    highlight(Mode, In, Path)
+	).
+
+digits([H|T0], [H|T]) :-
+	code_type(H, digit), !,
+	digits(T0, T).
+digits(_, []).
+
+highlight_line(Mode, LineNo) :-
+	get(Mode, text_buffer, TB),
+	get(TB, scan, 0, line, LineNo-1, start, SOL),
+	get(TB, scan, SOL, line, 0, end, EOL),
+	new(_, fragment(TB, SOL, EOL+1-SOL, highlight)).
 
 :- emacs_end_mode.
 
