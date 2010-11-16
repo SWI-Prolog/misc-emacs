@@ -40,35 +40,61 @@ highlight_lines(M, File:file) :->
 	atom_codes(Path, Codes),
 	get(File, name, FileName),
 	setup_call_cleanup(open(FileName, read, In),
-			   highlight(M, In, Codes),
+			   highlight(M, In, Codes, 0),
 			   close(In)).
 
-highlight(Mode, In, Path) :-
+highlight(Mode, In, Path, C0) :-
 	read_line_to_codes(In, Line),
 	(   Line == end_of_file
-	->  true
+	->  send(Mode, report, status, 'Highlighted %d lines', C0)
 	;   (   debug(highlight, 'Line: ~s', [Line]),
 	        append(Path, [0':|More], Pattern),
 	        append(_, Pattern, Line),
-		digits(More, Digits),
+		digits(More, Digits, Rest),
 		number_codes(LineNo, Digits),
-		highlight_line(Mode, LineNo)
-	    ->  true
-	    ;   true
+		highlight_line(Mode, LineNo, Rest)
+	    ->  C1 is C0 + 1
+	    ;   C1 = C0
 	    ),
-	    highlight(Mode, In, Path)
+	    highlight(Mode, In, Path, C1)
 	).
 
-digits([H|T0], [H|T]) :-
+digits([H|T0], [H|T], Rest) :-
 	code_type(H, digit), !,
-	digits(T0, T).
-digits(_, []).
+	digits(T0, T, Rest).
+digits(Rest, [], Rest).
 
-highlight_line(Mode, LineNo) :-
+highlight_line(Mode, LineNo, Message) :-
 	get(Mode, text_buffer, TB),
 	get(TB, scan, 0, line, LineNo-1, start, SOL),
 	get(TB, scan, SOL, line, 0, end, EOL),
-	new(_, fragment(TB, SOL, EOL+1-SOL, highlight)).
+	new(F, emacs_colour_fragment(TB, SOL, EOL+1-SOL, highlight)),
+	send(F, message, string(Message)),
+	(   callers_popup(Message, Mode, Popup)
+	->  send(F, popup, Popup)
+	;   true
+	).
+
+callers_popup(Message, Mode, Popup) :-
+	new(Popup, popup('Callers',
+			 message(Mode, find_tag, @arg1))),
+	phrase(callers(Popup), Message).
+
+callers(Popup) -->
+	string(_),
+	"Calls ",
+	string(Callers),
+	" [", !,
+	{ atom_codes(Atom, Callers),
+	  atomic_list_concat(List, '<-', Atom),
+	  forall(member(F, List),
+		 send(Popup, append,
+		      menu_item(F, @default, F)))
+	},
+	string(_).
+
+string([]) --> [].
+string([H|T]) --> [H], string(T).
 
 :- emacs_end_mode.
 
