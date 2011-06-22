@@ -9,7 +9,7 @@
 :- use_module(library(debug)).
 :- use_module(library(hyper)).
 
-:- debug(autocomplete).
+%:- debug(autocomplete).
 
 :- pce_begin_class(autocomplete_browser, frame,
 		   "Browser to show and select autocomplete results").
@@ -102,7 +102,7 @@ event(B, Ev:event) :->
 
 
 :- emacs_extend_mode(fundamental,
-		     [ autocomplete = key('\\C-c\\C-p')
+		     [
 		     ]).
 
 autocomplete(M) :->
@@ -115,6 +115,7 @@ autocomplete(M) :->
 	debug(autocomplete, '~q --> ~p', [Prefix, Completions]),
 	Completions \== [],
 	new(F, autocomplete_browser(E)),
+	send(M, setup_completion_styles, F),
 	send(F, complete_from, Prefix, Completions),
 	get(M?image, character_position, SOW, point(CX,CY)),
 	get(M?image, display_position, point(IX,IY)),
@@ -155,6 +156,10 @@ backspace_completion(M) :->
 	"Backward delete character in completion"::
 	send(M, backward_delete_char),
 	send(M, mark_undo).
+
+setup_completion_styles(_M, _F:autocomplete_browser) :->
+	"Virtual: initialise styles"::
+	true.
 
 completions(_M, _SOW:int, Prefix:name, Completions:chain) :<-
 	"Completions is the list of completions for Prefix"::
