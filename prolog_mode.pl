@@ -69,6 +69,11 @@ completion(TB, Prefix, DI) :-
 	new(DI, dict_item(Name, string('%s/%d', Name, Arity))),
 	functor(How, Style, _),
 	send(DI, style, Style).
+completion(_TB, Prefix, DI) :-
+	'$in_library'(Name, Arity, _Path),
+	sub_atom(Name, 0, _, _, Prefix),
+	new(DI, dict_item(Name, string('%s/%d', Name, Arity))),
+	send(DI, style, autoload).
 
 setup_completion_styles(M, F:autocomplete_browser) :->
 	"Setup the styles for candidate predicates"::
@@ -83,6 +88,7 @@ setup_completion_styles(M, F:autocomplete_browser) :->
 	).
 
 copy_style(built_in,	 built_in).
+copy_style(autoload,	 autoload).
 copy_style(local,	 local(_)).
 copy_style(imported,	 imported(_)).
 copy_style(dynamic,	 dynamic(_)).
