@@ -21,6 +21,7 @@ initialise(F, Editor:editor) :->
 	send_super(F, initialise, 'Autocomplete', popup,
 		   application := @emacs),
 	send(F, append, new(B, emacs_autocomplete_browser)),
+	send(F?tile, border, 0),
 	send(B, name, browser).
 
 unlink(F) :->
@@ -54,7 +55,10 @@ complete_from(F, Prefix:char_array, Members:chain) :->
 make_autocomplete_recogniser(G) :-
 	new(G, key_binding),
 	send(G, function, '\\e', destroy),
-	send(G, function, '\\C-g', destroy).
+	send(G, function, '\\C-g', destroy),
+	send(G, function, 'RET', enter),
+	send(G, function, 'TAB', enter),
+	send(G, function, backspace, backspace).
 
 initialise(B) :->
 	"Setup the browser"::
@@ -70,10 +74,26 @@ insert_selection(B) :->
 	send(B?editor, insert_autocompletion, Text),
 	send(B, destroy).
 
+extend(B, Code:int) :->
+	"Extend current word with char"::
+	send(B?editor, extend_completion, Code),
+	send(B?list_browser, insert_self, 1, Code).
+
+backspace(B) :->
+	send(B?editor, backspace_completion),
+	send(B?list_browser, backward_delete_char).
+
 event(B, Ev:event) :->
 	"Process an event"::
 	(   send(@emacs_autocomplete_browser_recogniser, event, Ev)
 	->  true
+	;   get(Ev, id, Code),
+	    integer(Code),
+	    (	code_type(Code, csym)
+	    ->  send(B, extend, Code)
+	    ;	send(B?editor, extend_completion, Code),
+	        send(B, destroy)
+	    )
 	;   get(B, list_browser, LB),
 	    send(LB, event, Ev)
 	).
@@ -91,7 +111,7 @@ autocomplete(M) :->
 	get(M, autocomplete_range, tuple(SOW,EOW)),
 	get(M, contents, SOW, EOW-SOW, String),
 	get(String, value, Prefix),
-	completions(Prefix, Completions),
+	get(M, completions, SOW, Prefix, Completions),
 	debug(autocomplete, '~q --> ~p', [Prefix, Completions]),
 	Completions \== [],
 	new(F, autocomplete_browser(E)),
@@ -99,12 +119,14 @@ autocomplete(M) :->
 	get(M?image, character_position, SOW, point(CX,CY)),
 	get(M?image, display_position, point(IX,IY)),
 	X is IX+CX,
-	Y is IY+CY,
+	Y is IY+CY+7,
 	debug(autocomplete, 'Pos = ~w,~w', [X,Y]),
 	new(_, partof_hyper(E, F)),
 	send(F, open, point(X,Y)),
-	send(E?window, focus, F?browser),
-	send(E?window, keyboard_focus, F?browser).
+	get(E, window, Window),
+	get(F, browser, Browser),
+	send(Window, focus, Browser),
+	send(Window, keyboard_focus, Browser).
 
 autocomplete_range(M, T:tuple) :<-
 	"Range for text autocompletion"::
@@ -124,7 +146,19 @@ insert_autocompletion(M, Text:char_array) :->
 	send(TB, mark_undo),
 	send(M, caret, SOW+Text?size).
 
-completions(Prefix, Completions) :-
-	'$atom_completions'(Prefix, Completions).
+extend_completion(M, Char:int) :->
+	"Add a character"::
+	send(M, typed, Char, M?editor),
+	send(M, mark_undo).
+
+backspace_completion(M) :->
+	"Backward delete character in completion"::
+	send(M, backward_delete_char),
+	send(M, mark_undo).
+
+completions(_M, _SOW:int, Prefix:name, Completions:chain) :<-
+	"Completions is the list of completions for Prefix"::
+	'$atom_completions'(Prefix, List),
+	chain_list(Completions, List).
 
 :- emacs_end_mode.
