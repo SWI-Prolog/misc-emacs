@@ -11,26 +11,36 @@
 
 :- debug(autocomplete).
 
-:- pce_global(@emacs_completion_browser,
-	      new(autocomplete_browser)).
-
 :- pce_begin_class(autocomplete_browser, frame,
 		   "Browser to show and select autocomplete results").
 
-initialise(F) :->
+variable(editor, editor*, both, "Associated editor").
+
+initialise(F, Editor:editor) :->
+	send(F, slot, editor, Editor),
 	send_super(F, initialise, 'Autocomplete', popup,
 		   application := @emacs),
 	send(F, append, new(B, emacs_autocomplete_browser)),
 	send(B, name, browser).
 
-editor(F, E:editor) :<-
-	"Find the editor I'm associated to"::
-	get(F, hypered, editor, E).
+unlink(F) :->
+	(   get(F, editor, Editor), Editor \== @nil
+	->  get(Editor, window, Window),
+	    send(Window, focus, Editor),
+	    send(Window, keyboard_focus, Editor)
+	;   true
+	),
+	send_super(F, unlink).
 
-members(F, Members:chain) :->
+browser(F, B:emacs_autocomplete_browser) :<-
+	get(F, member, browser, B).
+
+complete_from(F, Prefix:char_array, Members:chain) :->
 	"Fill browser with members"::
 	get(F, member, browser, B),
-	send(B, members, Members).
+	send(B, members, Members),
+	forall(sub_atom(Prefix, _, 1, _, Char),
+	       send(B, insert_self, 1, Char)).
 
 :- pce_end_class.
 
@@ -43,7 +53,8 @@ members(F, Members:chain) :->
 
 make_autocomplete_recogniser(G) :-
 	new(G, key_binding),
-	send(G, function, q, destroy).
+	send(G, function, '\\e', destroy),
+	send(G, function, '\\C-g', destroy).
 
 initialise(B) :->
 	"Setup the browser"::
@@ -58,6 +69,14 @@ insert_selection(B) :->
 	get(DI, key, Text),
 	send(B?editor, insert_autocompletion, Text),
 	send(B, destroy).
+
+event(B, Ev:event) :->
+	"Process an event"::
+	(   send(@emacs_autocomplete_browser_recogniser, event, Ev)
+	->  true
+	;   get(B, list_browser, LB),
+	    send(LB, event, Ev)
+	).
 
 :- pce_end_class.
 
@@ -75,17 +94,17 @@ autocomplete(M) :->
 	completions(Prefix, Completions),
 	debug(autocomplete, '~q --> ~p', [Prefix, Completions]),
 	Completions \== [],
-	send(@emacs_completion_browser, members, Completions),
+	new(F, autocomplete_browser(E)),
+	send(F, complete_from, Prefix, Completions),
 	get(M?image, character_position, SOW, point(CX,CY)),
 	get(M?image, display_position, point(IX,IY)),
 	X is IX+CX,
 	Y is IY+CY,
 	debug(autocomplete, 'Pos = ~w,~w', [X,Y]),
-	new(_, partof_hyper(E, @emacs_completion_browser, autocompleter, editor)),
-	send(@emacs_completion_browser, transient_for, E?frame),
-	send(@emacs_completion_browser, kind, popup),
-	send(@emacs_completion_browser, modal, transient),
-	send(@emacs_completion_browser, open, point(X,Y)).
+	new(_, partof_hyper(E, F)),
+	send(F, open, point(X,Y)),
+	send(E?window, focus, F?browser),
+	send(E?window, keyboard_focus, F?browser).
 
 autocomplete_range(M, T:tuple) :<-
 	"Range for text autocompletion"::
@@ -102,6 +121,7 @@ insert_autocompletion(M, Text:char_array) :->
 	get(M, text_buffer, TB),
 	send(TB, delete, SOW, EOW-SOW),
 	send(TB, insert, SOW, Text),
+	send(TB, mark_undo),
 	send(M, caret, SOW+Text?size).
 
 completions(Prefix, Completions) :-
