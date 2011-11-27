@@ -80,7 +80,7 @@ setup_completion_styles(M, F:autocomplete_browser) :->
 	get(F, browser, Browser),
 	get(M, styles, Sheet),
 	(   copy_style(Name, Class),
-	    emacs_prolog_colours:style(goal(Class,_), StyleName, _),
+	    emacs_prolog_mode:style(goal(Class,_), StyleName, _),
 	    get(Sheet, value, StyleName, Style),
 	    send(Browser, style, Name, Style),
 	    fail
